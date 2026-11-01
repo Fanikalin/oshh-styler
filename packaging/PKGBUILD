@@ -1,7 +1,7 @@
 # Maintainer: Fanikalin
 pkgname=oshh-styler
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc='OSHH Styler: оформление и настройка Omarchy (TUI на Textual): темы, обои, экран блокировки, Hyprland'
 arch=('any')
 url='https://github.com/Fanikalin/oshh-styler'
@@ -27,6 +27,7 @@ package() {
   cd "$pkgname-$pkgver"
 
   install -d "$pkgdir/usr/share/oshh-styler/oshh_style"
+  install -m755 bin/run.sh "$pkgdir/usr/share/oshh-styler/run.sh"
   install -m644 main.py catalog.json "$pkgdir/usr/share/oshh-styler/"
   install -m644 oshh_style/*.py oshh_style/style.tcss "$pkgdir/usr/share/oshh-styler/oshh_style/"
 

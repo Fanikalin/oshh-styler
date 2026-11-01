@@ -17,7 +17,7 @@ run_term() {  # терминал + команда
   esac
 }
 
-CMD=(python3 -I "$STYLE_DIR/main.py" "$@")
+CMD=("$STYLE_DIR/run.sh" "$@")
 
 if command -v xdg-terminal-exec >/dev/null 2>&1; then
   exec setsid xdg-terminal-exec --app-id="$APP_ID" --title="OSHH Styler" -e "${CMD[@]}"
