@@ -27,7 +27,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 curl -fsSL -o "$tmp/src.tar.gz" "https://github.com/$REPO/archive/refs/tags/$ver.tar.gz"
 tar -xzf "$tmp/src.tar.gz" -C "$tmp"
-cd "$tmp/oshh-styler-${ver#v}"
+cd "$tmp/oshh-styler-${ver#v}/packaging"
 makepkg -si
 
 say "Готово: команда oshh-styler (настройка системы: oshh-styler --setup) или пункт «OSHH Styler» в меню программ."
