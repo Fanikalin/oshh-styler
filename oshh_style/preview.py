@@ -7,6 +7,7 @@ import os
 import struct
 import sys
 import termios
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -26,6 +27,9 @@ ROW_MARKS = [chr(code) for code in (
 
 
 def image_protocol():
+    forced = os.environ.get("OSHH_PREVIEW_PROTOCOL")
+    if forced in ("kitty", "sixel", "blocks"):
+        return forced
     terminal = paths.terminal_name()
     if (terminal in ("kitty", "ghostty", "wezterm")
             or os.environ.get("KITTY_WINDOW_ID")
@@ -49,9 +53,10 @@ def cell_pixels():
     return 10, 20
 
 
-def sixel_encode(image):
-    """Картинка → sixel-поток: до 256 цветов без дизеринга, сжатие повторов по столбцам."""
-    quantized = image.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+def sixel_encode(image, colors=64):
+    """Картинка → sixel-поток. Больше ~64 цветов foot рисовать отказывается
+    («maximum image dimensions exceeded» на каждый кадр), поэтому — 64 без дизеринга."""
+    quantized = image.quantize(colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     width, height = quantized.size
     pixels = quantized.load()
     used = sorted({index for _, index in (quantized.getcolors(width * height) or [])})
@@ -61,15 +66,15 @@ def sixel_encode(image):
         red, green, blue = palette[index * 3: index * 3 + 3]
         out.append(f"#{index};2;{red * 100 // 255};{green * 100 // 255};{blue * 100 // 255}")
     for top in range(0, height, 6):
-        bits_of = {index: [] for index in used}
+        bits_of = {index: bytearray(width) for index in used}
         for column in range(width):
             by_color = {}
             for row in range(6):
                 if top + row < height:
                     index = pixels[column, top + row]
                     by_color[index] = by_color.get(index, 0) | 1 << row
-            for index in used:
-                bits_of[index].append(by_color.get(index, 0))
+            for index, bits in by_color.items():
+                bits_of[index][column] = bits
         out.append("-")
         for index in used:
             out.append(f"#{index}")
@@ -84,6 +89,31 @@ def sixel_encode(image):
                 previous, count = char, 1
             out.append(f"!{count}{previous}")
     return "".join(out) + "\x1b\\"
+
+
+SIXEL_CACHE = {}
+SIXEL_LIMIT = 720  # потолок по большей стороне: качество всё равно выше полублоков во много раз
+
+
+def _sixel_of(thumb, cols, rows):
+    """Sixel-поток с кэшем: один и тот же кадр не кодируем дважды."""
+    key = (str(thumb), cols, rows)
+    if key in SIXEL_CACHE:
+        return SIXEL_CACHE[key]
+    cell_width, cell_height = cell_pixels()
+    width, height = cols * cell_width, rows * cell_height
+    if max(width, height) > SIXEL_LIMIT:
+        scale = SIXEL_LIMIT / max(width, height)
+        width, height = round(width * scale), round(height * scale)
+    started = time.monotonic()
+    with Image.open(thumb) as image:
+        frame = image.convert("RGB").resize((width, height))
+    data = sixel_encode(frame)
+    paths.log_line(f"sixel: {width}x{height} за {time.monotonic() - started:.2f} с, {len(data)} байт")
+    if len(SIXEL_CACHE) > 8:
+        SIXEL_CACHE.clear()
+    SIXEL_CACHE[key] = data
+    return data
 
 
 def thumbnail(path, width=960):
@@ -152,10 +182,7 @@ class Preview(Widget):
             return
         if self.protocol == "sixel":
             try:
-                cell_width, cell_height = cell_pixels()
-                with Image.open(thumb) as image:
-                    frame = image.convert("RGB").resize((self.cols * cell_width, self.rows * cell_height))
-                data = sixel_encode(frame)
+                data = _sixel_of(thumb, self.cols, self.rows)
             except Exception as error:  # битый кадр или постер — показываем «нет предпросмотра», не падаем
                 paths.log_error(error)
                 self.app.call_from_thread(self.refresh)
