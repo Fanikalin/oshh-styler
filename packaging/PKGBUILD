@@ -10,6 +10,7 @@ depends=(
   'hyprland'
   'python'
   'python-textual'
+  'python-rich'
   'python-pillow'
   'ffmpeg'              # кадры предпросмотра видеообоев
   'zenity'              # окно выбора своих обоев и логотипа
