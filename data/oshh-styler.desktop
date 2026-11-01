@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=OSHH Styler
+Name[ru]=OSHH Styler
+GenericName=Appearance and system settings
+GenericName[ru]=Оформление и настройка
+Comment=Themes, wallpapers, lock screen, Hyprland options and more
+Comment[ru]=Темы, обои, экран блокировки, параметры Hyprland и другое
+Exec=oshh-styler
+TryExec=oshh-styler
+Icon=oshh-styler
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=theme;wallpaper;hyprland;omarchy;style;тема;обои;
+StartupWMClass=oshh-styler

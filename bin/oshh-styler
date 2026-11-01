@@ -1,0 +1,33 @@
+#!/bin/bash
+# OSHH Styler: оформление и настройка. Отдельное приложение, пункты меню
+# Omarchy (Style / Setup) не заменяет и не трогает.
+
+STYLE_DIR="${OSHH_STYLER_DIR:-/usr/share/oshh-styler}"
+APP_ID="oshh-styler"
+
+run_term() {  # терминал + команда
+  case "${1%% *}" in
+    kitty)          exec kitty --class "$APP_ID" --title "OSHH Styler" -e "${@:2}" ;;
+    alacritty)      exec alacritty --class "$APP_ID" -T "OSHH Styler" -e "${@:2}" ;;
+    foot)           exec foot --app-id "$APP_ID" --title "OSHH Styler" -e "${@:2}" ;;
+    wezterm)        exec wezterm start --always-new-process --class "$APP_ID" "${@:2}" ;;
+    gnome-terminal) exec gnome-terminal --class "$APP_ID" --title "OSHH Styler" -- "${@:2}" ;;
+    konsole)        exec konsole --name "$APP_ID" -p tabtitle="OSHH Styler" -e "${@:2}" ;;
+    xterm)          exec xterm -class "$APP_ID" -title "OSHH Styler" -e "${@:2}" ;;
+  esac
+}
+
+CMD=(python3 -I "$STYLE_DIR/main.py" "$@")
+
+if command -v xdg-terminal-exec >/dev/null 2>&1; then
+  exec setsid xdg-terminal-exec --app-id="$APP_ID" --title="OSHH Styler" -e "${CMD[@]}"
+fi
+
+for t in kitty alacritty foot wezterm gnome-terminal konsole xterm; do
+  if command -v "$t" >/dev/null 2>&1; then
+    run_term "$t" "${CMD[@]}"
+  fi
+done
+
+echo "oshh-styler: не найден терминал (xdg-terminal-exec, kitty, alacritty, foot, …)" >&2
+exit 1

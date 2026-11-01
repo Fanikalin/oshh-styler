@@ -1,0 +1,38 @@
+# Maintainer: Fanikalin
+pkgname=oshh-styler
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='OSHH Styler: оформление и настройка Omarchy (TUI на Textual): темы, обои, экран блокировки, Hyprland'
+arch=('any')
+url='https://github.com/Fanikalin/oshh-styler'
+license=('MIT')
+depends=(
+  'omarchy'
+  'python'
+  'python-textual'
+  'python-pillow'
+  'ffmpeg'              # кадры предпросмотра видеообоев
+  'zenity'              # окно выбора своих обоев и логотипа
+  'xdg-terminal-exec'
+)
+optdepends=(
+  'kitty|alacritty|foot: терминал, если нет xdg-terminal-exec'
+)
+options=('!debug')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('b643718595a3b80a2c65b6270457cfcaebb10c8f14ea29b8ad1369d573497ef1')
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -d "$pkgdir/usr/share/oshh-styler/oshh_style"
+  install -m644 main.py catalog.json "$pkgdir/usr/share/oshh-styler/"
+  install -m644 oshh_style/*.py oshh_style/style.tcss "$pkgdir/usr/share/oshh-styler/oshh_style/"
+
+  install -Dm755 bin/oshh-styler "$pkgdir/usr/bin/oshh-styler"
+  install -Dm644 data/oshh-styler.desktop "$pkgdir/usr/share/applications/oshh-styler.desktop"
+  install -Dm644 data/oshh-styler.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/oshh-styler.svg"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
