@@ -11,7 +11,13 @@ Omarchy (Style / Setup) и их скрипты. Можно держать оба
 
 ## Установка (Arch)
 
-Из тега релиза через makepkg:
+В одну команду:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fanikalin/oshh-styler/main/install.sh)"
+```
+
+Или вручную из тега релиза:
 
 ```bash
 git clone https://github.com/Fanikalin/oshh-styler
@@ -22,8 +28,10 @@ makepkg -si
 Потом: пункт «OSHH Styler» в меню программ или команда `oshh-styler`.
 Режим настройки системы: `oshh-styler --setup`.
 
-Зависимости: `omarchy` (AUR), `python-textual`, `python-pillow`, `ffmpeg`,
-`zenity`, `xdg-terminal-exec` (или kitty / alacritty / foot).
+Зависимости: `hyprland`, `python-textual`, `python-pillow`, `ffmpeg`,
+`zenity`, `xdg-terminal-exec` (или kitty / alacritty / foot). Разделы «Тема»,
+«Обои», «Шрифты» и часть настройки рассчитаны на Omarchy (без него —
+предупреждение при установке, работает остальное).
 
 ## Разделы
 

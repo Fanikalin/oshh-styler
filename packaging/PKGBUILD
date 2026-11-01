@@ -7,7 +7,7 @@ arch=('any')
 url='https://github.com/Fanikalin/oshh-styler'
 license=('MIT')
 depends=(
-  'omarchy'
+  'hyprland'
   'python'
   'python-textual'
   'python-pillow'
@@ -16,6 +16,7 @@ depends=(
   'xdg-terminal-exec'
 )
 optdepends=(
+  'omarchy: темы, шрифты, обои и панель Omarchy — полный функционал (https://omarchy.org)'
   'kitty|alacritty|foot: терминал, если нет xdg-terminal-exec'
 )
 options=('!debug')
