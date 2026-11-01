@@ -20,7 +20,7 @@ STATE = HOME / ".config/oshh/style.json"
 INCLUDE_MARK = "-- oshh-style: настройки приложения «Оформление»"
 INCLUDE_BLOCK = f"""{INCLUDE_MARK}
 do
-  local path = home .. "/.config/hypr/oshh-style.lua"
+  local path = os.getenv("HOME") .. "/.config/hypr/oshh-style.lua"
   local f = io.open(path, "r")
   if f then
     f:close()
@@ -183,6 +183,13 @@ def ensure_include():
     except OSError:
         return False
     if INCLUDE_MARK in text:
+        # ремонт старой вставки: она опиралась на глобальную home, которой может не быть
+        broken = 'local path = home .. "/.config/hypr/oshh-style.lua"'
+        if broken in text:
+            text = text.replace(broken, 'local path = os.getenv("HOME") .. "/.config/hypr/oshh-style.lua"')
+            temporary = MAIN_CONFIG.with_suffix(".tmp")
+            temporary.write_text(text)
+            temporary.replace(MAIN_CONFIG)
         return True
     backup = MAIN_CONFIG.with_suffix(".lua.before-oshh-style")
     if not backup.exists():
