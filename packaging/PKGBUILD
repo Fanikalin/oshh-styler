@@ -17,7 +17,7 @@ depends=(
 )
 optdepends=(
   'omarchy: темы, шрифты, обои и панель Omarchy — полный функционал (https://omarchy.org)'
-  'kitty|alacritty|foot: терминал, если нет xdg-terminal-exec'
+  'kitty: терминал, если нет xdg-terminal-exec (подойдут и alacritty, foot)'
 )
 options=('!debug')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
