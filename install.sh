@@ -28,6 +28,8 @@ trap 'rm -rf "$tmp"' EXIT
 curl -fsSL -o "$tmp/src.tar.gz" "https://github.com/$REPO/archive/refs/tags/$ver.tar.gz"
 tar -xzf "$tmp/src.tar.gz" -C "$tmp"
 cd "$tmp/oshh-styler-${ver#v}/packaging"
+# контрольную сумму вписываем на месте: в тарболе она по определению чужая
+sed -i "s/^sha256sums=.*/sha256sums=('$(sha256sum "$tmp/src.tar.gz" | cut -d' ' -f1)')/" PKGBUILD
 makepkg -si
 
 say "Готово: команда oshh-styler (настройка системы: oshh-styler --setup) или пункт «OSHH Styler» в меню программ."
