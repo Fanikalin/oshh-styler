@@ -81,8 +81,14 @@ class Preview(Widget):
         if self.kitty:
             self.app.call_from_thread(self.place, thumb)
         else:
-            with Image.open(thumb) as image:
-                pixels = image.convert("RGB").resize((self.cols, self.rows * 2))
+            try:
+                with Image.open(thumb) as image:
+                    pixels = image.convert("RGB").resize((self.cols, self.rows * 2))
+            except Exception as error:  # битый кадр или постер — показываем «нет предпросмотра», не падаем
+                from . import paths
+                paths.log_error(error)
+                self.app.call_from_thread(self.refresh)
+                return
             self.pixels = pixels
             self.app.call_from_thread(self.refresh)
 

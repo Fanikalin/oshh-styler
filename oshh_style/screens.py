@@ -11,6 +11,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from . import paths
+
 HOME = Path.home()
 HYPRLOCK = HOME / ".config/hypr/hyprlock.conf"
 HYPRIDLE = HOME / ".config/hypr/hypridle.conf"
@@ -19,8 +21,8 @@ GREETER_SETTINGS = GREETER_DIR / "settings.json"
 GREETER_BACKGROUND = GREETER_DIR / "background"
 LOGO_DIR = HOME / ".config/oshh/lock-logo"
 LOGO_TYPES = {".png", ".jpg", ".jpeg", ".webp"}
-THEME_DIR = HOME / ".config/omarchy/current/theme"
-BACKGROUND = HOME / ".config/omarchy/current/background"
+THEME_DIR = paths.current_dir() / "theme"
+BACKGROUND = paths.current_dir() / "background"
 
 LOCK_PREVIEW_GRACE = 30
 

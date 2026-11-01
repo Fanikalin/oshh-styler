@@ -15,7 +15,7 @@ from textual.widget import Widget
 from textual.widgets import Footer, Input, OptionList, Static, Tree
 from textual.widgets.option_list import Option
 
-from . import hypr, looks, monitors, scenes, settings, setup
+from . import hypr, looks, monitors, paths, scenes, settings, setup
 from .preview import Preview
 
 BAR_WIDTH = 18
@@ -628,12 +628,21 @@ class WallpapersPage(Horizontal):
         def progress(done, total):
             self.app.call_from_thread(self.app.set_help, f"Подбираю по цветам темы: {done} из {total}")
 
-        others = looks.by_theme_colors(looks.other_wallpapers(self.theme), progress)
+        try:
+            others = looks.by_theme_colors(looks.other_wallpapers(self.theme), progress)
+        except Exception as error:  # падение подбора не должно ронять приложение
+            paths.log_error(error)
+            others = None
         self.app.call_from_thread(self.show_others, others)
 
     def show_others(self, others):
         self.app.set_help("")
         self.loading = False
+        if others is None:
+            self.app.notify("Не удалось собрать «Другие обои»; подробности в ~/.local/state/omarchy/styler.log",
+                            severity="warning", timeout=8)
+            self.fill("other")
+            return
         self.others = others
         self.fill("other")
 
@@ -669,7 +678,8 @@ class WallpapersPage(Horizontal):
     def show_still(self, item):
         try:
             still = looks.still_of(item)
-        except OSError:
+        except Exception as error:  # нет сети, нет ffmpeg и т.п. — просто без картинки
+            paths.log_error(error)
             still = None
         self.app.call_from_thread(self.query_one(Preview).show, still)
 

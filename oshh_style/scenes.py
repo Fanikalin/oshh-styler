@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from . import hypr, lockview, looks, monitors, screens
+from . import hypr, lockview, looks, monitors, paths, screens
 
 HOME = Path.home()
 OUTPUT = HOME / ".cache/oshh/style/scene.png"
@@ -90,7 +90,7 @@ def hypr_font():
 
 
 def wallpaper_path():
-    return HOME / ".config/omarchy/current/background"
+    return paths.current_dir() / "background"
 
 
 @lru_cache(maxsize=4)

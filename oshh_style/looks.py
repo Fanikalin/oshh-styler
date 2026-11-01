@@ -11,12 +11,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import monitors, palette
+from . import monitors, palette, paths
 
-HOME = Path.home()
-OMARCHY = Path(os.environ.get("OMARCHY_PATH", HOME / ".local/share/omarchy"))
+HOME = paths.HOME
+OMARCHY = paths.omarchy_dir()
 USER_THEMES = HOME / ".config/omarchy/themes"
-CURRENT = HOME / ".config/omarchy/current"
+CURRENT = paths.current_dir()
 USER_BACKGROUNDS = HOME / ".config/omarchy/backgrounds"
 CACHE = HOME / ".cache/oshh/style"
 WALLPAPER_CONF = HOME / ".config/oshh/wallpaper.conf"
