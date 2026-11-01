@@ -26,9 +26,13 @@ ROW_MARKS = [chr(code) for code in (
 
 
 def image_protocol():
-    if os.environ.get("KITTY_WINDOW_ID") or os.environ.get("GHOSTTY_RESOURCES_DIR") or os.environ.get("WEZTERM_EXECUTABLE"):
+    terminal = paths.terminal_name()
+    if (terminal in ("kitty", "ghostty", "wezterm")
+            or os.environ.get("KITTY_WINDOW_ID")
+            or os.environ.get("GHOSTTY_RESOURCES_DIR")
+            or os.environ.get("WEZTERM_EXECUTABLE")):
         return "kitty"
-    if os.environ.get("TERM", "").startswith("foot"):
+    if terminal == "foot" or os.environ.get("TERM", "").startswith("foot"):
         return "sixel"  # foot: sixel включён по умолчанию
     return "blocks"
 
@@ -133,6 +137,7 @@ class Preview(Widget):
         self.run_worker(self.load, thread=True, exclusive=True, group="preview")
 
     def load(self):
+        paths.log_line(f"preview: protocol={self.protocol}, TERM={os.environ.get('TERM', '')}")
         path = self.path
         if path is None or not path.exists():
             self.app.call_from_thread(self.refresh)

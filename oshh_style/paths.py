@@ -5,6 +5,7 @@
 /usr/share/omarchy. Здесь выбирается то, что есть на машине.
 """
 import os
+from datetime import datetime
 from pathlib import Path
 
 HOME = Path.home()
@@ -26,6 +27,36 @@ def omarchy_dir():
         if (candidate / "themes").is_dir():
             return candidate
     return _OMARCHY_DEFAULT
+
+
+def log_line(text):
+    """Обычная строка в журнал (диагностика без ошибки)."""
+    try:
+        target = STATE / "styler.log"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a") as output:
+            output.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {text}\n")
+    except OSError:
+        pass
+
+
+def terminal_name():
+    """Имя терминала по цепочке родительских процессов: TERM может быть переопределён конфигом."""
+    pid = os.getpid()
+    for _ in range(10):
+        try:
+            with open(f"/proc/{pid}/comm") as handle:
+                name = handle.read().strip()
+            with open(f"/proc/{pid}/status") as handle:
+                ppid = next(int(line.split()[1]) for line in handle if line.startswith("PPid:"))
+        except (OSError, StopIteration, ValueError):
+            return ""
+        if name in ("kitty", "ghostty", "wezterm", "foot", "alacritty", "konsole", "xterm"):
+            return name
+        if pid <= 1:
+            return ""
+        pid = ppid
+    return ""
 
 
 def log_error(error):
