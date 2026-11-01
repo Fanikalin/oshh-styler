@@ -1,13 +1,20 @@
-"""Картинка в терминале: протокол kitty, в остальных терминалах — полублоки."""
+"""Картинка в терминале: протокол kitty (kitty, ghostty, wezterm), sixel (foot),
+в остальных терминалах — полублоки."""
 import base64
+import fcntl
 import hashlib
 import os
+import struct
+import sys
+import termios
 from pathlib import Path
 
 from PIL import Image
 from rich.style import Style
 from rich.text import Text
 from textual.widget import Widget
+
+from . import paths
 
 THUMBS = Path.home() / ".cache/oshh/style/thumbs"
 IMAGE_ID = 0x4f5348
@@ -16,6 +23,63 @@ ROW_MARKS = [chr(code) for code in (
     0x305, 0x30d, 0x30e, 0x310, 0x312, 0x33d, 0x33e, 0x33f, 0x346, 0x34a, 0x34b, 0x34c, 0x350, 0x351, 0x352, 0x357,
     0x35b, 0x363, 0x364, 0x365, 0x366, 0x367, 0x368, 0x369, 0x36a, 0x36b, 0x36c, 0x36d, 0x36e, 0x36f, 0x483, 0x484,
     0x485, 0x486, 0x487, 0x592, 0x593, 0x594, 0x595, 0x597, 0x598, 0x599, 0x59c, 0x59d, 0x59e, 0x59f, 0x5a0, 0x5a1)]
+
+
+def image_protocol():
+    if os.environ.get("KITTY_WINDOW_ID") or os.environ.get("GHOSTTY_RESOURCES_DIR") or os.environ.get("WEZTERM_EXECUTABLE"):
+        return "kitty"
+    if os.environ.get("TERM", "").startswith("foot"):
+        return "sixel"  # foot: sixel включён по умолчанию
+    return "blocks"
+
+
+def cell_pixels():
+    """Размер ячейки терминала в пикселях (TIOCGWINSZ), по умолчанию 10×20."""
+    try:
+        packed = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, struct.pack("HHHH", 0, 0, 0, 0))
+        rows, cols, xpix, ypix = struct.unpack("HHHH", packed)
+        if cols and rows and xpix and ypix:
+            return max(1, xpix // cols), max(1, ypix // rows)
+    except (OSError, ValueError):
+        pass
+    return 10, 20
+
+
+def sixel_encode(image):
+    """Картинка → sixel-поток: до 256 цветов без дизеринга, сжатие повторов по столбцам."""
+    quantized = image.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    width, height = quantized.size
+    pixels = quantized.load()
+    used = sorted({index for _, index in (quantized.getcolors(width * height) or [])})
+    out = [f"\x1bP1;1q\"1;1;{width};{height}"]
+    palette = quantized.getpalette()
+    for index in used:
+        red, green, blue = palette[index * 3: index * 3 + 3]
+        out.append(f"#{index};2;{red * 100 // 255};{green * 100 // 255};{blue * 100 // 255}")
+    for top in range(0, height, 6):
+        bits_of = {index: [] for index in used}
+        for column in range(width):
+            by_color = {}
+            for row in range(6):
+                if top + row < height:
+                    index = pixels[column, top + row]
+                    by_color[index] = by_color.get(index, 0) | 1 << row
+            for index in used:
+                bits_of[index].append(by_color.get(index, 0))
+        out.append("-")
+        for index in used:
+            out.append(f"#{index}")
+            previous, count = None, 0
+            for bits in bits_of[index]:
+                char = chr(0x3F + bits)
+                if char == previous:
+                    count += 1
+                    continue
+                if previous is not None:
+                    out.append(f"!{count}{previous}")
+                previous, count = char, 1
+            out.append(f"!{count}{previous}")
+    return "".join(out) + "\x1b\\"
 
 
 def thumbnail(path, width=960):
@@ -44,7 +108,7 @@ class Preview(Widget):
         self.rows = 0
         self.pixels = None
         self.ready = False
-        self.kitty = bool(os.environ.get("KITTY_WINDOW_ID"))
+        self.protocol = image_protocol()
 
     def show(self, path, ready=False):
         """ready: файл уже готовый PNG нужного размера, копия в кэше не нужна."""
@@ -78,19 +142,30 @@ class Preview(Widget):
         except OSError:
             self.app.call_from_thread(self.refresh)
             return
-        if self.kitty:
+        if self.protocol == "kitty":
             self.app.call_from_thread(self.place, thumb)
-        else:
+            return
+        if self.protocol == "sixel":
             try:
+                cell_width, cell_height = cell_pixels()
                 with Image.open(thumb) as image:
-                    pixels = image.convert("RGB").resize((self.cols, self.rows * 2))
+                    frame = image.convert("RGB").resize((self.cols * cell_width, self.rows * cell_height))
+                data = sixel_encode(frame)
             except Exception as error:  # битый кадр или постер — показываем «нет предпросмотра», не падаем
-                from . import paths
                 paths.log_error(error)
                 self.app.call_from_thread(self.refresh)
                 return
-            self.pixels = pixels
+            self.app.call_from_thread(self.place_sixel, data)
+            return
+        try:
+            with Image.open(thumb) as image:
+                pixels = image.convert("RGB").resize((self.cols, self.rows * 2))
+        except Exception as error:  # битый кадр или постер — показываем «нет предпросмотра», не падаем
+            paths.log_error(error)
             self.app.call_from_thread(self.refresh)
+            return
+        self.pixels = pixels
+        self.app.call_from_thread(self.refresh)
 
     def place(self, thumb):
         driver = self.app._driver
@@ -102,9 +177,19 @@ class Preview(Widget):
         self.pixels = True
         self.refresh()
 
+    def place_sixel(self, data):
+        driver = self.app._driver
+        if driver is None:
+            return
+        region = self.region
+        driver.write(f"\x1b[{region.y + 1};{region.x + 1}H")
+        driver.write(data)
+        self.pixels = True
+        self.refresh()
+
     def on_unmount(self):
         driver = self.app._driver
-        if self.kitty and driver:
+        if self.protocol == "kitty" and driver:
             driver.write(f"\x1b_Ga=d,d=I,i={IMAGE_ID},q=2\x1b\\")
 
     def render(self):
@@ -112,6 +197,12 @@ class Preview(Widget):
             return Text("\n  нет предпросмотра", style="dim")
         text = Text(no_wrap=True, end="")
         if self.pixels is True:
+            if self.protocol == "sixel":  # sixel рисует сам, ячейки оставляем пустыми
+                for row in range(self.rows):
+                    text.append(" " * self.cols)
+                    if row < self.rows - 1:
+                        text.append("\n")
+                return text
             style = Style(color=f"#{IMAGE_ID:06x}")
             for row in range(self.rows):
                 text.append(PLACEHOLDER + ROW_MARKS[row] + ROW_MARKS[0] + PLACEHOLDER * (self.cols - 1), style)
