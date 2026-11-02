@@ -26,6 +26,10 @@ ROW_MARKS = [chr(code) for code in (
     0x485, 0x486, 0x487, 0x592, 0x593, 0x594, 0x595, 0x597, 0x598, 0x599, 0x59c, 0x59d, 0x59e, 0x59f, 0x5a0, 0x5a1)]
 
 
+class Stale(Exception):
+    """Кадр устарел (пользователь уже выбрал другие обои) — кодирование прервано."""
+
+
 def image_protocol():
     forced = os.environ.get("OSHH_PREVIEW_PROTOCOL")
     if forced in ("kitty", "sixel", "blocks"):
@@ -53,9 +57,11 @@ def cell_pixels():
     return 10, 20
 
 
-def sixel_encode(image, colors=64):
+def sixel_encode(image, colors=64, stale=None):
     """Картинка → sixel-поток. Больше ~64 цветов foot рисовать отказывается
-    («maximum image dimensions exceeded» на каждый кадр), поэтому — 64 без дизеринга."""
+    («maximum image dimensions exceeded» на каждый кадр), поэтому — 64 без дизеринга.
+    stale: вызывается между строчными полосами; если возвращает True — кодирование
+    бросает Stale (кадр уже не нужен, например пользователь успел выбрать другие обои)."""
     quantized = image.quantize(colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     width, height = quantized.size
     pixels = quantized.load()
@@ -66,6 +72,8 @@ def sixel_encode(image, colors=64):
         red, green, blue = palette[index * 3: index * 3 + 3]
         out.append(f"#{index};2;{red * 100 // 255};{green * 100 // 255};{blue * 100 // 255}")
     for top in range(0, height, 6):
+        if stale is not None and stale():
+            raise Stale()
         bits_of = {index: bytearray(width) for index in used}
         for column in range(width):
             by_color = {}
@@ -92,10 +100,10 @@ def sixel_encode(image, colors=64):
 
 
 SIXEL_CACHE = {}
-SIXEL_LIMIT = 720  # потолок по большей стороне: качество всё равно выше полублоков во много раз
+SIXEL_LIMIT = 480  # потолок по большей стороне: при 700+ px чистый Python кодирует по 1-9 с на кадр
 
 
-def _sixel_of(thumb, cols, rows):
+def _sixel_of(thumb, cols, rows, stale=None):
     """Sixel-поток с кэшем: один и тот же кадр не кодируем дважды."""
     key = (str(thumb), cols, rows)
     if key in SIXEL_CACHE:
@@ -108,7 +116,7 @@ def _sixel_of(thumb, cols, rows):
     started = time.monotonic()
     with Image.open(thumb) as image:
         frame = image.convert("RGB").resize((width, height))
-    data = sixel_encode(frame)
+    data = sixel_encode(frame, stale=stale)
     paths.log_line(f"sixel: {width}x{height} за {time.monotonic() - started:.2f} с, {len(data)} байт")
     if len(SIXEL_CACHE) > 8:
         SIXEL_CACHE.clear()
@@ -144,6 +152,8 @@ class Preview(Widget):
         self.ready = False
         self.protocol = image_protocol()
         self._loaded_key = None  # (path, cols, rows) последнего отрисованного кадра
+        self._gen = 0  # счётчик запросов: устаревший кодер прерывает себя сам
+        self._debounce = None  # таймер, откладывающий запуск кодера при частых show()/resize
 
     def show(self, path, ready=False):
         """ready: файл уже готовый PNG нужного размера, копия в кэше не нужна."""
@@ -172,9 +182,20 @@ class Preview(Widget):
             # resize-события после прямой записи sixel в поток терминала) только грузит CPU
             return
         self._loaded_key = key
-        self.run_worker(self.load, thread=True, exclusive=True, group="preview")
+        self._gen += 1
+        gen = self._gen
+        if self._debounce is not None:
+            self._debounce.stop()
+        # при быстрой навигации по списку (стрелками) show() вызывается на каждый шаг —
+        # ждём короткую паузу, иначе на каждую промежуточную обоину заводится воркер
+        self._debounce = self.set_timer(0.12, lambda: self._start_load(gen))
 
-    def load(self):
+    def _start_load(self, gen):
+        if gen != self._gen:
+            return
+        self.run_worker(lambda: self.load(gen), thread=True, exclusive=True, group="preview")
+
+    def load(self, gen):
         paths.log_line(f"preview: protocol={self.protocol}, TERM={os.environ.get('TERM', '')}")
         path = self.path
         if path is None or not path.exists():
@@ -185,15 +206,21 @@ class Preview(Widget):
         except OSError:
             self.app.call_from_thread(self.refresh)
             return
+        if gen != self._gen:
+            return  # пока готовили миниатюру, пользователь выбрал другой файл
         if self.protocol == "kitty":
             self.app.call_from_thread(self.place, thumb)
             return
         if self.protocol == "sixel":
             try:
-                data = _sixel_of(thumb, self.cols, self.rows)
+                data = _sixel_of(thumb, self.cols, self.rows, stale=lambda: gen != self._gen)
+            except Stale:
+                return  # кадр устарел — молча бросаем, новый воркер уже в пути
             except Exception as error:  # битый кадр или постер — показываем «нет предпросмотра», не падаем
                 paths.log_error(error)
                 self.app.call_from_thread(self.refresh)
+                return
+            if gen != self._gen:
                 return
             self.app.call_from_thread(self.place_sixel, data)
             return
