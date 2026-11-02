@@ -22,7 +22,7 @@ optdepends=(
 )
 options=('!debug')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('cbcc1c26b8b578bfdd4ef3ab383271c0df89f06a853fe023245b8f2ef6cc9731')
+sha256sums=('2e9af50652279731d7f99c306745071f2879586b3fe7709ac7b4951ed6729fff')
 
 package() {
   cd "$pkgname-$pkgver"
