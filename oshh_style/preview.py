@@ -106,7 +106,8 @@ def sixel_encode(image, colors=64, stale=None):
 
 
 SIXEL_CACHE = {}
-SIXEL_LIMIT = 480  # потолок по большей стороне: при 700+ px чистый Python кодирует по 1-9 с на кадр
+SIXEL_LIMIT = 1200  # потолок по большей стороне: защита только от экстремальных (почти
+# на весь экран) окон — в обычной панели кодирование теперь укладывается в debounce (0.12 с)
 
 
 def _sixel_of(thumb, cols, rows, stale=None):
@@ -160,6 +161,8 @@ class Preview(Widget):
         self._loaded_key = None  # (path, cols, rows) последнего отрисованного кадра
         self._gen = 0  # счётчик запросов: устаревший кодер прерывает себя сам
         self._debounce = None  # таймер, откладывающий запуск кодера при частых show()/resize
+        self._drawn_region = None  # (x, y, cols, rows) последнего нарисованного sixel-кадра —
+        # нужен, чтобы стереть его вручную: терминал сам не чистит пиксели при уходе виджета
 
     def show(self, path, ready=False):
         """ready: файл уже готовый PNG нужного размера, копия в кэше не нужна."""
@@ -168,6 +171,8 @@ class Preview(Widget):
         if path is None:
             self.pixels = None
             self._loaded_key = None
+            if self.protocol == "sixel":
+                self._clear_sixel()
         if self.is_mounted:
             self.refresh_image()
 
@@ -255,16 +260,38 @@ class Preview(Widget):
         if driver is None:
             return
         region = self.region
+        key = (region.x, region.y, self.cols, self.rows)
+        if self._drawn_region is not None and self._drawn_region != key:
+            # виджет сместился/изменил размер с прошлой отрисовки — старые пиксели
+            # на прежнем месте никто кроме нас не сотрёт, иначе они "бликуют" в чужом месте
+            self._clear_sixel()
         driver.write(f"\x1b[{region.y + 1};{region.x + 1}H")
         driver.write(data)
+        self._drawn_region = key
         if self.pixels is not True:  # перерисовывать пустые ячейки под sixel только один раз
             self.pixels = True
             self.refresh()
+
+    def _clear_sixel(self):
+        """Стирает ранее нарисованный sixel-кадр прямой записью пробелов поверх старого
+        места. Нужно и при уходе со страницы (on_unmount), и перед отрисовкой на новом
+        месте — терминал не знает, что картинка больше не актуальна, и хранит её пиксели
+        до тех пор, пока что-то явно не перепишет эти же ячейки."""
+        driver = self.app._driver
+        if driver is None or self._drawn_region is None:
+            return
+        x, y, cols, rows = self._drawn_region
+        blank = " " * cols
+        for row in range(rows):
+            driver.write(f"\x1b[{y + row + 1};{x + 1}H{blank}")
+        self._drawn_region = None
 
     def on_unmount(self):
         driver = self.app._driver
         if self.protocol == "kitty" and driver:
             driver.write(f"\x1b_Ga=d,d=I,i={IMAGE_ID},q=2\x1b\\")
+        elif self.protocol == "sixel":
+            self._clear_sixel()
 
     def render(self):
         if self.pixels is None:
