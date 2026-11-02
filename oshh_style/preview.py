@@ -84,7 +84,13 @@ def sixel_encode(image, colors=64, stale=None):
             for index, bits in by_color.items():
                 bits_of[index][column] = bits
         out.append("-")
+        first_color = True
         for index in used:
+            if not first_color:
+                out.append("$")  # возврат курсора к началу строки: без него следующий
+                # цвет рисуется ПОСЛЕ предыдущего, курсор уезжает за пределы кадра —
+                # терминал видит бесконечно растущую ширину и сыплет truncating-варнингами
+            first_color = False
             out.append(f"#{index}")
             previous, count = None, 0
             for bits in bits_of[index]:
