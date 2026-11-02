@@ -57,15 +57,18 @@ def cell_pixels():
     return 10, 20
 
 
-def sixel_encode(image, colors=64, stale=None):
+def sixel_encode(image, colors=48, stale=None):
     """Картинка → sixel-поток. Больше ~64 цветов foot рисовать отказывается
-    («maximum image dimensions exceeded» на каждый кадр), поэтому — 64 без дизеринга.
+    («maximum image dimensions exceeded» на каждый кадр); 48 — компромисс между
+    качеством и объёмом данных (сам поток долго разбирается терминалом посимвольно,
+    чем он крупнее — тем дольше видимая задержка перед отрисовкой).
     stale: вызывается между строчными полосами; если возвращает True — кодирование
     бросает Stale (кадр уже не нужен, например пользователь успел выбрать другие обои)."""
     quantized = image.quantize(colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     width, height = quantized.size
-    pixels = quantized.load()
-    used = sorted({index for _, index in (quantized.getcolors(width * height) or [])})
+    raw = quantized.tobytes()  # 1 байт-индекс на пиксель, построчно — быстрее, чем
+    # поэлементный доступ через PIL load()/PyAccess на каждый пиксель
+    used = sorted(set(raw))
     out = [f"\x1bP1;1q\"1;1;{width};{height}"]
     palette = quantized.getpalette()
     for index in used:
@@ -74,18 +77,20 @@ def sixel_encode(image, colors=64, stale=None):
     for top in range(0, height, 6):
         if stale is not None and stale():
             raise Stale()
-        bits_of = {index: bytearray(width) for index in used}
-        for column in range(width):
-            by_color = {}
-            for row in range(6):
-                if top + row < height:
-                    index = pixels[column, top + row]
-                    by_color[index] = by_color.get(index, 0) | 1 << row
-            for index, bits in by_color.items():
-                bits_of[index][column] = bits
+        rows_here = min(6, height - top)
+        row_slices = [raw[(top + r) * width:(top + r) * width + width] for r in range(rows_here)]
+        # bits_of заводим лениво — только для цветов, реально встретившихся в ЭТОЙ полосе,
+        # а не для всех used (на фото в одной полосе обычно горстка цветов из 48 общих)
+        bits_of = {}
+        for column, values in enumerate(zip(*row_slices)):
+            for row, index in enumerate(values):
+                arr = bits_of.get(index)
+                if arr is None:
+                    arr = bits_of[index] = bytearray(width)
+                arr[column] |= 1 << row
         out.append("-")
         first_color = True
-        for index in used:
+        for index, bits in bits_of.items():
             if not first_color:
                 out.append("$")  # возврат курсора к началу строки: без него следующий
                 # цвет рисуется ПОСЛЕ предыдущего, курсор уезжает за пределы кадра —
@@ -93,8 +98,8 @@ def sixel_encode(image, colors=64, stale=None):
             first_color = False
             out.append(f"#{index}")
             previous, count = None, 0
-            for bits in bits_of[index]:
-                char = chr(0x3F + bits)
+            for bits_value in bits:
+                char = chr(0x3F + bits_value)
                 if char == previous:
                     count += 1
                     continue
@@ -106,8 +111,9 @@ def sixel_encode(image, colors=64, stale=None):
 
 
 SIXEL_CACHE = {}
-SIXEL_LIMIT = 1200  # потолок по большей стороне: защита только от экстремальных (почти
-# на весь экран) окон — в обычной панели кодирование теперь укладывается в debounce (0.12 с)
+SIXEL_LIMIT = 720  # потолок по большей стороне: баланс между чёткостью и объёмом
+# sixel-данных — foot разбирает поток посимвольно, крупный кадр заметно тормозит отрисовку
+# даже если наш Python-кодер отработал быстро
 
 
 def _sixel_of(thumb, cols, rows, stale=None):
