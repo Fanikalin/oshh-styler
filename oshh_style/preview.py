@@ -60,11 +60,11 @@ def cell_pixels():
 def sixel_encode(image, colors=48, stale=None):
     """Картинка → sixel-поток. Больше ~64 цветов foot рисовать отказывается
     («maximum image dimensions exceeded» на каждый кадр); 48 — компромисс между
-    качеством и объёмом данных (сам поток долго разбирается терминалом посимвольно,
-    чем он крупнее — тем дольше видимая задержка перед отрисовкой).
+    качеством и объёмом данных. FASTOCTREE вместо MEDIANCUT: в ~100 раз быстрее
+    квантизация и как бонус чуть меньше итоговых байт (однороднее области одного цвета).
     stale: вызывается между строчными полосами; если возвращает True — кодирование
     бросает Stale (кадр уже не нужен, например пользователь успел выбрать другие обои)."""
-    quantized = image.quantize(colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    quantized = image.quantize(colors, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
     width, height = quantized.size
     raw = quantized.tobytes()  # 1 байт-индекс на пиксель, построчно — быстрее, чем
     # поэлементный доступ через PIL load()/PyAccess на каждый пиксель
@@ -111,9 +111,9 @@ def sixel_encode(image, colors=48, stale=None):
 
 
 SIXEL_CACHE = {}
-SIXEL_LIMIT = 720  # потолок по большей стороне: баланс между чёткостью и объёмом
-# sixel-данных — foot разбирает поток посимвольно, крупный кадр заметно тормозит отрисовку
-# даже если наш Python-кодер отработал быстро
+SIXEL_LIMIT = 1600  # потолок-страховка только от экстремальных (почти на весь экран)
+# окон — с FASTOCTREE и быстрым кодером обычная панель кодируется и без него быстро, а
+# занижение ниже реального размера рамки виджета оставляет пустое поле вокруг картинки
 
 
 def _sixel_of(thumb, cols, rows, stale=None):
