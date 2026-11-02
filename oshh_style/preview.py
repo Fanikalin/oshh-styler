@@ -143,6 +143,7 @@ class Preview(Widget):
         self.pixels = None
         self.ready = False
         self.protocol = image_protocol()
+        self._loaded_key = None  # (path, cols, rows) последнего отрисованного кадра
 
     def show(self, path, ready=False):
         """ready: файл уже готовый PNG нужного размера, копия в кэше не нужна."""
@@ -150,6 +151,7 @@ class Preview(Widget):
         self.ready = ready
         if path is None:
             self.pixels = None
+            self._loaded_key = None
         if self.is_mounted:
             self.refresh_image()
 
@@ -164,6 +166,12 @@ class Preview(Widget):
         self.rows = min(len(ROW_MARKS), self.size.height)
         if not self.cols or not self.rows:
             return
+        key = (str(self.path), self.cols, self.rows)
+        if key == self._loaded_key:
+            # тот же кадр того же размера уже нарисован — повторная перезагрузка (эхо
+            # resize-события после прямой записи sixel в поток терминала) только грузит CPU
+            return
+        self._loaded_key = key
         self.run_worker(self.load, thread=True, exclusive=True, group="preview")
 
     def load(self):
@@ -216,8 +224,9 @@ class Preview(Widget):
         region = self.region
         driver.write(f"\x1b[{region.y + 1};{region.x + 1}H")
         driver.write(data)
-        self.pixels = True
-        self.refresh()
+        if self.pixels is not True:  # перерисовывать пустые ячейки под sixel только один раз
+            self.pixels = True
+            self.refresh()
 
     def on_unmount(self):
         driver = self.app._driver
